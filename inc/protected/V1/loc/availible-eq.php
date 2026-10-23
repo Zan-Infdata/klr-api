@@ -30,7 +30,8 @@
             APIMgmt::NAME => $row[MdEq::$name],
             APIMgmt::CODE => $row[MdEq::$code],
             APIMgmt::UUID => $row[MdEq::$uuid],
-            APIMgmt::ISACTIVE => $row[MdEq::$isActive]
+            APIMgmt::ISACTIVE => $row[MdEq::$isActive],
+            APIMgmt::TYPE_ID => $row[MdEq::$typeId]
         );
     }
 

@@ -4,7 +4,9 @@
     use apidb\Db;
     use apidb\MdLoc;
     use apidb\ReadData;
-use apidb\TLocProp;
+    use apidb\TLocProp;
+    use apidb\SyUser;
+    use apidb\MdLocStat;
 
     APIMgmt::checkMethod(["GET"]);
     $db = Db::connectDB();
@@ -23,7 +25,15 @@ use apidb\TLocProp;
             APIMgmt::CODE => $row[MdLoc::$code],
             APIMgmt::UUID => $row[MdLoc::$uuid],
             APIMgmt::PRNT_ID => $row[TLocProp::$locIdPrnt],
-            APIMgmt::STATUS_ID => $row[TLocProp::$locStatId]
+            APIMgmt::STATUS_ID => $row[TLocProp::$locStatId],
+            APIMgmt::PRNT_NAME => $row[APIMgmt::PRNT_NAME],
+            APIMgmt::USER_KY => $row[TLocProp::$locStatId] == MdLocStat::T_TAKEN && isset($row[SyUser::$id])
+                ? array(
+                    APIMgmt::ID => $row[SyUser::$id],
+                    APIMgmt::NAME => $row[SyUser::$name],
+                    APIMgmt::SURNAME => $row[SyUser::$surr],
+                )
+                : null
         );
     }
 

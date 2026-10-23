@@ -282,6 +282,7 @@ use \PDO;
 			$qry .= "       ,e.".MdEq::$code;
 			$qry .= "       ,e.".MdEq::$uuid;
 			$qry .= "       ,e.".MdEq::$isActive;
+			$qry .= "       ,e.".MdEq::$typeId;
 
 			$qry .= " FROM ";
 			$qry .= "        ".MdEq::$table." as e," ;
@@ -565,20 +566,28 @@ use \PDO;
 			$qry .= "       ,l.".MdLoc::$isActive;
 			$qry .= "       ,lp.".TLocProp::$locIdPrnt;
 			$qry .= "       ,lp.".TLocProp::$locStatId;
+			$qry .= "       ,prnt.".MdLoc::$name." as ".APIMgmt::PRNT_NAME;
+			$qry .= "       ,u.".SyUser::$id;
+			$qry .= "       ,u.".SyUser::$name;
+			$qry .= "       ,u.".SyUser::$surr;
 
 			$qry .= " FROM ";
-			$qry .= "        ".MdLoc::$table." as l," ;
-			$qry .= "        ".TLocProp::$table." as lp" ;
+			$qry .= "        ".MdLoc::$table." as l" ;
+			$qry .= " JOIN ".TLocProp::$table." as lp ON l.".MdLoc::$id." = lp.".TLocProp::$locId;
+			$qry .= " LEFT JOIN ".MdLoc::$table." as prnt ON prnt.".MdLoc::$id." = lp.".TLocProp::$locIdPrnt;
+			$qry .= " LEFT JOIN ".SyUser::$table." as u ON u.".SyUser::$id." = lp.".TLocProp::$userId;
+			$qry .= " AND lp.".TLocProp::$locStatId." = ".MdLocStat::T_TAKEN;
 
 			$qry .= " WHERE ";
 			$qry .= "        l.".MdLoc::$typeId." in ".MdLocType::getTypesForSQL([MdLocType::TRANSPORT]) ;
 			$qry .= " AND    l.".MdLoc::$isActive." = 1" ;
-			$qry .= " AND    l.".MdLoc::$id." = lp.".TLocProp::$locId." " ;
 			$qry .= " AND    l.".MdLoc::$id." > 1";
 
 
 			$statement = $db->prepare($qry);
-			$statement->execute();
+			if (!$statement->execute()) {
+				return null;
+			}
 
 			$res = array();
 
@@ -806,13 +815,7 @@ use \PDO;
 			$qry .= " AND    prnt.".MdLoc::$id." = lp.".TLocProp::$locIdPrnt." " ;
 			$qry .= " AND    lp.".TLocProp::$locStatId." = ".MdLocStat::T_TAKEN." " ;
 			$qry .= " AND    l.".MdLoc::$id." = :i";
-			$qry .= " AND    NOT EXISTS (";
-			
-			$qry .= "    SELECT 1";
-			$qry .= "    FROM " . TEqProp::$table . " AS ep";
-			$qry .= "    WHERE ep." . TEqProp::$locId . " = :i";
-
-			$qry .= " )";
+			// Equipment can remain aboard when the transport is returned.
 
 			$statement = $db->prepare($qry);
 			
@@ -866,7 +869,8 @@ use \PDO;
 			$qry .= " FROM ";
 			$qry .= "        ".MdEq::$table." as e," ;
 			$qry .= "        ".TEqProp::$table." as ep," ;
-			$qry .= "        ".MdLoc::$table." as l" ;
+			$qry .= "        ".MdLoc::$table." as l," ;
+			$qry .= "        ".TLocProp::$table." as lp" ;
 
 			$qry .= " WHERE ";
 
@@ -875,7 +879,10 @@ use \PDO;
 			$qry .= " AND    l.".MdLoc::$typeId." in ".MdLocType::getTypesForSQL([MdLocType::TRANSPORT]) ;
 			$qry .= " AND    l.".MdLoc::$isActive." = 1" ;
 			$qry .= " AND    l.".MdLoc::$id." = :lid" ;
-			$qry .= " AND    ep.".TEqProp::$userId." = :uid" ; //* this could cause trouble
+			// Unloading follows current transport ownership, including equipment loaded by someone else.
+			$qry .= " AND    lp.".TLocProp::$locId." = l.".MdLoc::$id ;
+			$qry .= " AND    lp.".TLocProp::$locStatId." = ".MdLocStat::T_TAKEN ;
+			$qry .= " AND    lp.".TLocProp::$userId." = :uid" ;
 			$qry .= " AND    e.".MdEq::$id." = :i";
 			$qry .= " AND    e.".MdEq::$isActive." = 1";
 

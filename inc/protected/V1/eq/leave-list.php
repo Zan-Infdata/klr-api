@@ -45,9 +45,9 @@ use apilib\AclManager;
         }
         else {
             $success = Transaction::equipmentLocationChange($db, $equipment[MdEq::$id], $user_id, $fromLocation[MdLoc::$id], $fromLocationProp[TLocProp::$locIdPrnt]);
-            
-            array_push($successes, $success ? 1 : 0);
         }
+
+        array_push($successes, $success ? 1 : 0);
 
     }
 
