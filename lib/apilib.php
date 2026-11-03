@@ -520,6 +520,7 @@ use apidb\SyUserAcl;
 		const ISLAST = 'isLast';
 		const TYPE_ID = 'typeId';
 		const STATUS_ID = 'statusId';
+		const SERVICE_STATUS_ID = 'serviceStatusId';
 		const PRNT = 'parent';
 		const PRNT_ID = 'parentId';
 		const PRNT_NAME = 'parentName';

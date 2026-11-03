@@ -241,6 +241,7 @@ use \PDO;
 			$qry .= "       ,e.".MdEq::$code;
 			$qry .= "       ,e.".MdEq::$uuid;
 			$qry .= "       ,e.".MdEq::$isActive;
+			$qry .= "       ,ep.".TEqProp::$serviceStatId;
 			$qry .= "       ,l.".MdLoc::$id;
 			$qry .= "       ,l.".MdLoc::$name;
 			$qry .= "       ,l.".MdLoc::$typeId;
@@ -283,6 +284,7 @@ use \PDO;
 			$qry .= "       ,e.".MdEq::$uuid;
 			$qry .= "       ,e.".MdEq::$isActive;
 			$qry .= "       ,e.".MdEq::$typeId;
+			$qry .= "       ,ep.".TEqProp::$serviceStatId;
 
 			$qry .= " FROM ";
 			$qry .= "        ".MdEq::$table." as e," ;
@@ -1749,6 +1751,39 @@ use \PDO;
 	}
 
 
+	class MdEqServiceStat {
+
+		const READY = 1;
+		const NEEDS_SERVICE = 2;
+		const IN_SERVICE = 3;
+
+		public static $table = 'md_eq_service_stat';
+
+		public static $id = 'MD_EQ_SERVICE_STAT_ID';
+		public static $code = 'MD_EQ_SERVICE_STAT_CODE';
+		public static $name = 'MD_EQ_SERVICE_STAT_NAME';
+
+		public static function getMdEqServiceStat($c, $i) {
+			$qry = "SELECT * FROM " . self::$table . " WHERE " . self::$id . " = :id";
+
+			$stmt = $c->prepare($qry);
+			$stmt->bindParam(":id", $i, PDO::PARAM_INT);
+			$stmt->execute();
+
+			return $stmt->fetch(PDO::FETCH_ASSOC);
+		}
+
+		public static function getAll($c) {
+			$qry = "SELECT * FROM " . self::$table;
+
+			$stmt = $c->prepare($qry);
+			$stmt->execute();
+
+			return $stmt->fetchAll(PDO::FETCH_ASSOC);
+		}
+	}
+
+
 	class TEqProp {
 		public static $table = 't_eq_prop';
 		
@@ -1758,6 +1793,7 @@ use \PDO;
 		public static $userId = 'SY_USER_ID';
 		public static $contractorId = 'MD_CNTRCTR_ID';
 		public static $equipmentId = 'MD_EQ_ID';
+		public static $serviceStatId = 'MD_EQ_SERVICE_STAT_ID';
 	
 		public static function getTEqProp($c, $i) {
 			$qry = "SELECT * FROM " . self::$table . " WHERE " . self::$id . " = :id";

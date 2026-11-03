@@ -27,7 +27,10 @@ use apidb\ReadData;
             APIMgmt::NAME => $row[MdEq::$name],
             APIMgmt::CODE => $row[MdEq::$code],
             APIMgmt::ISACTIVE => $row[MdEq::$isActive],
+            APIMgmt::SERVICE_STATUS_ID => (int) $row[TEqProp::$serviceStatId],
             APIMgmt::PRNT => array(
+                APIMgmt::ID => (int) $row[MdLoc::$id],
+                APIMgmt::TYPE_ID => (int) $row[MdLoc::$typeId],
                 APIMgmt::NAME => $row[MdLoc::$name],
                 APIMgmt::IS_WRH => $row[MdLoc::$typeId] == MdLocType::WAREHOUSE,
             ),

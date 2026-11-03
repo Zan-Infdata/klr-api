@@ -6,6 +6,7 @@
     use apidb\MdEq;
     use apidb\ReadData;
     use apidb\MdLoc;
+    use apidb\TEqProp;
 
     APIMgmt::checkMethod(["GET"]);
     $db = Db::connectDB();
@@ -31,7 +32,8 @@
             APIMgmt::CODE => $row[MdEq::$code],
             APIMgmt::UUID => $row[MdEq::$uuid],
             APIMgmt::ISACTIVE => $row[MdEq::$isActive],
-            APIMgmt::TYPE_ID => $row[MdEq::$typeId]
+            APIMgmt::TYPE_ID => $row[MdEq::$typeId],
+            APIMgmt::SERVICE_STATUS_ID => (int) $row[TEqProp::$serviceStatId]
         );
     }
 
