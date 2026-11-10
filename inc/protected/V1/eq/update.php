@@ -5,29 +5,24 @@
     use apidb\Db;
     use apidb\UpdateData;
 
-    APIMgmt::checkMethod(["POST"]);
-    $db = Db::connectDB();
-    //TODO: check permissions to create
-
+    APIMgmt::checkMethod(array('POST'));
     $body_raw = ReqURI::getJsonBody();
-
-    $expected_params = array(APIMgmt::ELEM_KY, APIMgmt::TYPE_KY);
-    APIMgmt::checkRequiredParams($body_raw, $expected_params);
-
+    if (!is_array($body_raw)) { APIMgmt::badParamsResponse(); }
+    APIMgmt::checkRequiredParams($body_raw, array(APIMgmt::ELEM_KY, APIMgmt::TYPE_KY));
     $data = $body_raw[APIMgmt::ELEM_KY];
-    $type_id = $body_raw[APIMgmt::TYPE_KY];
-
-    $check = isset($data[APIMgmt::UUID]) && !empty($data[APIMgmt::UUID]);
-    $check = $check && isset($data[APIMgmt::CODE]) && !empty($data[APIMgmt::CODE]);
-    $check = $check && isset($data[APIMgmt::NAME]) && !empty($data[APIMgmt::NAME]);
-    if (!$check){
-        APIMgmt::badParamsResponse();
+    if (!is_array($data) || !UpdateData::isUpdateUUID($data[APIMgmt::UUID] ?? null)) { APIMgmt::badParamsResponse(); }
+    foreach (array(APIMgmt::CODE, APIMgmt::NAME) as $field) {
+        if (!isset($data[$field]) || !is_string($data[$field]) || trim($data[$field]) === '') { APIMgmt::badParamsResponse(); }
     }
-
-    $success = UpdateData::updateEqByUUID($db, $data[APIMgmt::UUID], $data[APIMgmt::CODE], $data[APIMgmt::NAME], $type_id, $data[APIMgmt::ISACTIVE]);
-    $data = array();
-
-    $data[APIMgmt::ERR_KY] = $success ? 1 : 0;
-    echo json_encode($data);
-    
-?>
+    if (!isset($data[APIMgmt::ISACTIVE]) || !in_array($data[APIMgmt::ISACTIVE], array(0,1,'0','1'), true)) { APIMgmt::badParamsResponse(); }
+    if ((!is_int($body_raw[APIMgmt::TYPE_KY]) && !is_string($body_raw[APIMgmt::TYPE_KY]))
+        || filter_var($body_raw[APIMgmt::TYPE_KY], FILTER_VALIDATE_INT) === false || (int) $body_raw[APIMgmt::TYPE_KY] < 1) { APIMgmt::badParamsResponse(); }
+    $db = Db::connectDB();
+    $status = UpdateData::updateEqByUUID($db, $data[APIMgmt::UUID], $data[APIMgmt::CODE], $data[APIMgmt::NAME], $body_raw[APIMgmt::TYPE_KY], $data[APIMgmt::ISACTIVE]);
+    if ($status !== 200) {
+        $messages = array(400 => 'Bad request', 404 => 'Record not found', 409 => 'Ambiguous record', 500 => 'Server error');
+        APIMgmt::sendResponse(1, $messages[$status] ?? 'Server error', $status);
+    }
+    // Preserve the existing single-item mutation contract used by web and mobile.
+    header('Content-Type: application/json; charset=utf-8');
+    echo json_encode(array(APIMgmt::ERR_KY => 1));

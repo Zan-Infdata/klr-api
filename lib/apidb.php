@@ -966,61 +966,48 @@ use \PDO;
 
 		}
 
-		public static function updateEqByUUID($db, $uuid, $code, $name, $typeId, $isActive){
+        public static function isUpdateUUID($value) {
+            return is_string($value) && preg_match('/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/iD', $value);
+        }
 
-			$qry =  " UPDATE ";
-			$qry .=  "  ".MdEq::$table. " SET ";
+        // Status codes distinguish a missing target from a successful unchanged assignment.
+        private static function updateExactUUID($db, $table, $idColumn, $uuidColumn, $uuid, $values) {
+            if (!self::isUpdateUUID($uuid)) { return 400; }
+            if ($db->inTransaction()) { return 500; }
+            try {
+                if (!$db->beginTransaction()) { return 500; }
+                $statement = $db->prepare('SELECT ' . $idColumn . ' FROM ' . $table . ' WHERE ' . $uuidColumn . ' = :uuid FOR UPDATE');
+                $statement->bindValue(':uuid', $uuid, PDO::PARAM_STR);
+                if (!$statement->execute()) { $db->rollBack(); return 500; }
+                $targets = $statement->fetchAll(PDO::FETCH_ASSOC);
+                if (count($targets) !== 1) { $db->rollBack(); return count($targets) === 0 ? 404 : 409; }
+                $assignments = array();
+                foreach ($values as $column => $value) { $assignments[] = $column . ' = :' . $column; }
+                $statement = $db->prepare('UPDATE ' . $table . ' SET ' . implode(', ', $assignments) . ' WHERE ' . $idColumn . ' = :id');
+                foreach ($values as $column => $value) {
+                    $statement->bindValue(':' . $column, $value[0], $value[1]);
+                }
+                $statement->bindValue(':id', $targets[0][$idColumn], PDO::PARAM_INT);
+                if (!$statement->execute()) { $db->rollBack(); return 500; }
+                if (!$db->commit()) { if ($db->inTransaction()) { $db->rollBack(); } return 500; }
+                return 200;
+            } catch (\Throwable $error) {
+                try { if ($db->inTransaction()) { $db->rollBack(); } } catch (\Throwable $rollbackError) { /* Return only the controlled status. */ }
+                return 500;
+            }
+        }
 
-			$qry .=  " ".MdEq::$code." = :code, " ;
-			$qry .=  " ".MdEq::$name." = :name, " ;
-			$qry .=  " ".MdEq::$typeId." = :tid, " ;
-			$qry .=  " ".MdEq::$isActive." = :ia " ;
+        public static function updateEqByUUID($db, $uuid, $code, $name, $typeId, $isActive) {
+            return self::updateExactUUID($db, MdEq::$table, MdEq::$id, MdEq::$uuid, $uuid, array(
+                MdEq::$code => array($code, PDO::PARAM_STR), MdEq::$name => array($name, PDO::PARAM_STR),
+                MdEq::$typeId => array($typeId, PDO::PARAM_INT), MdEq::$isActive => array($isActive, PDO::PARAM_INT)));
+        }
 
-			$qry .=  " WHERE " ;
-			$qry .=  MdEq::$uuid. " LIKE :uuid ";
-
-			$statement = $db->prepare($qry);
-
-			$statement->bindValue(":code", $code , PDO::PARAM_STR);
-			$statement->bindValue(":name", $name , PDO::PARAM_STR);
-			$statement->bindValue(":tid", $typeId , PDO::PARAM_INT);
-			$statement->bindValue(":ia", $isActive , PDO::PARAM_INT);
-
-			$statement->bindValue(":uuid", $uuid , PDO::PARAM_STR);
-			
-			$rowNo = $statement->execute();
-			
-			return $rowNo;
-
-		}
-
-		public static function updateLocByUUID($db, $uuid, $code, $name, $desc, $isActive){
-
-			$qry =  " UPDATE ";
-			$qry .=  "  ".MdLoc::$table. " SET ";
-
-			$qry .=  " ".MdLoc::$code." = :code, " ;
-			$qry .=  " ".MdLoc::$name." = :name, " ;
-			$qry .=  " ".MdLoc::$desc." = :desc, " ;
-			$qry .=  " ".MdLoc::$isActive." = :ia " ;
-
-			$qry .=  " WHERE " ;
-			$qry .=  MdLoc::$uuid. " LIKE :uuid ";
-
-			$statement = $db->prepare($qry);
-
-			$statement->bindValue(":code", $code , PDO::PARAM_STR);
-			$statement->bindValue(":name", $name , PDO::PARAM_STR);
-			$statement->bindValue(":desc", $desc , PDO::PARAM_STR);
-			$statement->bindValue(":ia", $isActive , PDO::PARAM_INT);
-
-			$statement->bindValue(":uuid", $uuid , PDO::PARAM_STR);
-			
-			$rowNo = $statement->execute();
-			
-			return $rowNo;
-
-		}
+        public static function updateLocByUUID($db, $uuid, $code, $name, $desc, $isActive) {
+            return self::updateExactUUID($db, MdLoc::$table, MdLoc::$id, MdLoc::$uuid, $uuid, array(
+                MdLoc::$code => array($code, PDO::PARAM_STR), MdLoc::$name => array($name, PDO::PARAM_STR),
+                MdLoc::$desc => array($desc, PDO::PARAM_STR), MdLoc::$isActive => array($isActive, PDO::PARAM_INT)));
+        }
 
 	}
 
