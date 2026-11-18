@@ -3,7 +3,9 @@
     use apilib\ReqURI;
     use apilib\APIMgmt;
     use apidb\Db;
+    use apidb\SyUserAcl;
     use apidb\MdEq;
+    use apidb\MdEqType;
     use apidb\MdLoc;
     use apidb\MdLocType;
     use apidb\ReadData;
@@ -13,8 +15,10 @@
     use apidb\Transaction;
 
     APIMgmt::checkMethod(["POST"]);
+    if (!SyUserAcl::hasPrivilege($user, SyUserAcl::MANAGER)) {
+        APIMgmt::sendResponse(1, "Forbidden", 403);
+    }
     $db = Db::connectDB();
-    //TODO: check permissions to create
 
     $body_raw = ReqURI::getJsonBody();
 
@@ -25,16 +29,12 @@
     $toLocation_id = $body_raw[APIMgmt::PRNT_TO_KY];
     $type_id = $body_raw[APIMgmt::TYPE_KY];
     
+    APIMgmt::checkStringParams($data, array(APIMgmt::UUID, APIMgmt::CODE, APIMgmt::NAME));
+    if (!isset($data[APIMgmt::ISACTIVE]) || !in_array($data[APIMgmt::ISACTIVE], array(0, 1, '0', '1'), true)
+        || !APIMgmt::positiveId($toLocation_id) || !APIMgmt::positiveId($type_id)) { APIMgmt::badParamsResponse(); }
     $toLocation = MdLoc::getMdLoc($db, $toLocation_id);
-
-    $check = in_array($toLocation[MdLoc::$typeId], [MdLocType::WAREHOUSE]);
-    $check = $check && isset($data[APIMgmt::UUID]) && !empty($data[APIMgmt::UUID]);
-    $check = $check && isset($data[APIMgmt::CODE]) && !empty($data[APIMgmt::CODE]);
-    $check = $check && isset($data[APIMgmt::NAME]) && !empty($data[APIMgmt::NAME]);
-
-    if (!$check){
-        APIMgmt::badParamsResponse();
-    }
+    if (!$toLocation || $toLocation[MdLoc::$typeId] != MdLocType::WAREHOUSE) { APIMgmt::badParamsResponse(); }
+    if (!MdEqType::getMdEqType($db, $type_id)) { APIMgmt::badParamsResponse(); }
 
     $success = Transaction::createEquipment($db, $data, $toLocation_id, $type_id, $user[SyUser::$id]);
     $data = array();

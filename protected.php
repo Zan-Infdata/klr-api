@@ -15,7 +15,8 @@
     $decoded = JWTManager::verifyJWT($token);
 
     // CHECK API KY
-    if (!$decoded || !array_key_exists(APIMgmt::ID, $decoded) || !array_key_exists(JWTManager::IS_REFRESH, $decoded)) {
+    if (!$decoded || !APIMgmt::positiveId($decoded[APIMgmt::ID] ?? null)
+        || !in_array($decoded[JWTManager::IS_REFRESH] ?? null, array(0, 1, '0', '1'), true)) {
         // API KY not found
         include_once(ReqURI::get401FileName());
         exit();
@@ -28,10 +29,10 @@
 
 
     $db = Db::connectDB();
-    $user = SyUser::getSyUser($db, $decoded[APIMgmt::ID]);
+    $user = SyUser::getActiveSyUser($db, $decoded[APIMgmt::ID]);
 
     if (!$user) {
-        // User not found
+        // User missing or disabled
         include_once(ReqURI::get401FileName());
         exit();
     }

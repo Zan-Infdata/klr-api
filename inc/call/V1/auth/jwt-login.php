@@ -20,14 +20,15 @@
 
     $decoded = JWTManager::verifyJWT($token);
 
-    if (!$decoded || !array_key_exists(APIMgmt::ID, $decoded) || !$decoded[JWTManager::IS_REFRESH]) {
+    if (!$decoded || !APIMgmt::positiveId($decoded[APIMgmt::ID] ?? null)
+        || !in_array($decoded[JWTManager::IS_REFRESH] ?? null, array(1, '1'), true)) {
         APIMgmt::sendResponse(1, "Wrong token.", 401);
     }
 
-    $user = SyUser::getSyUser($db, $decoded[APIMgmt::ID]);
+    $user = SyUser::getActiveSyUser($db, $decoded[APIMgmt::ID]);
 
     if (!$user) {
-        APIMgmt::sendResponse(1, "User not found.", 404);
+        APIMgmt::sendResponse(1, "Bad token.", 401);
     }
 
     if ($user[SyUser::$refreshToken] !== $token){

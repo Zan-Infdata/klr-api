@@ -17,7 +17,7 @@
 
     $db_res = ReadData::getUserTransportsReturnList($db, $user_id);
 
-    if (!$db_res) {
+    if (is_null($db_res)) {
         APIMgmt::serverErrorResponse();
     }
 

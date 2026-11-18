@@ -16,7 +16,7 @@
     $user_id = $as_user_id ? $as_user_id : $user[SyUser::$id];
 
     $db_res = ReadData::getUserTransportsList($db, $user_id);
-    if (!$db_res) {
+    if (is_null($db_res)) {
         APIMgmt::serverErrorResponse();
     }
 

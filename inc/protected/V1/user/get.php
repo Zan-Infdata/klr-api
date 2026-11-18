@@ -18,12 +18,11 @@
 
     $expected_params = array(APIMgmt::ID_KY);
     $params = APIMgmt::checkParams($params_raw, $expected_params);
+    if (!APIMgmt::positiveId($params[APIMgmt::ID_KY])) { APIMgmt::badParamsResponse(); }
 
     $new_user = SyUser::getSyUser($db, $params[APIMgmt::ID_KY]);
 
-    if (is_null($new_user)) {
-        APIMgmt::serverErrorResponse();
-    }
+    APIMgmt::requireRecord($new_user);
 
     $out = array(
         APIMgmt::ID => $new_user[SyUser::$id],

@@ -15,18 +15,16 @@
     $params_raw = ReqURI::getParams();
 
     $expected_params = array(APIMgmt::ELEM_KY);
-    APIMgmt::checkRequiredParams($params_raw, $expected_params);
+    APIMgmt::checkStringParams($params_raw, $expected_params);
 
     $equipment_uuid = $params_raw[APIMgmt::ELEM_KY];
-    $date_from = urldecode($params_raw[APIMgmt::DATE_FROM_KY]) ?? null;
-    $date_to = urldecode($params_raw[APIMgmt::DATE_TO_KY]) ?? null;
+    $date_from = APIMgmt::optionalString($params_raw, APIMgmt::DATE_FROM_KY);
+    $date_to = APIMgmt::optionalString($params_raw, APIMgmt::DATE_TO_KY);
 
     $equipment = MdEq::getMdEqByUUID($db, $equipment_uuid);
+    APIMgmt::requireRecord($equipment);
     $equipment_transitions = ReadData::getTEqTrnsWithLoc($db,$equipment[MdEq::$id], $date_from, $date_to);
 
-    if(!$equipment){   
-        APIMgmt::badParamsResponse();
-    }
     
     $history = array();
     foreach ($equipment_transitions as $row) {

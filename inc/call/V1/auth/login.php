@@ -7,6 +7,7 @@
     use apidb\UpdateData;
     use apidb\SyUser;
     use apilib\JWTManager;
+    use apilib\AuthManager;
 
     APIMgmt::checkMethod(["POST"]);
     $db = Db::connectDB();
@@ -24,18 +25,15 @@
 
     $pwd = $post[APIMgmt::PWD_KY];
     $username = $post[APIMgmt::USR_KY]; 
+    if (!APIMgmt::nonEmptyString($username) || !is_string($pwd) || $pwd === '' || strpos($pwd, "\0") !== false) { APIMgmt::badParamsResponse(); }
 
     $user = ReadData::getSyUserByName($db, $username);
 
-    if (!$user) {
-        APIMgmt::sendResponse(1, "User not found.", 404);
-    }
-
-    $hash = $user[SyUSer::$pwd];
-    $valid = password_verify($pwd, $hash);
-
-    if (!$valid) {
-        APIMgmt::sendResponse(1, "Invalid password.", 401);
+    $hash = $user ? $user[SyUser::$pwd] : null;
+    $hasHash = is_string($hash) && $hash !== '';
+    $valid = password_verify($pwd, $hasHash ? $hash : AuthManager::DUMMY_PASSWORD_HASH);
+    if (!$user || !$hasHash || !$valid) {
+        APIMgmt::sendResponse(1, "Invalid credentials.", 401);
     }
 
 

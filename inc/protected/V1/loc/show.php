@@ -14,13 +14,16 @@ use apidb\TLocProp;
     $params_raw = ReqURI::getParams();
 
     $expected_params = array(APIMgmt::ELEM_KY);
-    APIMgmt::checkRequiredParams($params_raw, $expected_params);
+    APIMgmt::checkStringParams($params_raw, $expected_params);
 
     $loc_uuid = $params_raw[APIMgmt::ELEM_KY];
     
     $location = MdLoc::getMdLocByUUID($db, $loc_uuid);
+    APIMgmt::requireRecord($location);
     $locationProp = TLocProp::getTLocPropByLocId($db, $location[MdLoc::$id]);
+    APIMgmt::requireRecord($locationProp, 409);
     $prntLocation = MdLoc::getMdLoc($db, $locationProp[TLocProp::$locIdPrnt]);
+    APIMgmt::requireRecord($prntLocation, 409);
 
     $locData = array();
     

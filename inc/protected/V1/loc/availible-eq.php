@@ -16,7 +16,11 @@
 
     $expected_params = array(APIMgmt::ID_KY);
     $params = APIMgmt::checkParams($params_raw, $expected_params);
+    if (!APIMgmt::positiveId($params[APIMgmt::ID_KY])) { APIMgmt::badParamsResponse(); }
 
+
+    $location = MdLoc::getMdLoc($db, $params[APIMgmt::ID_KY]);
+    APIMgmt::requireRecord($location);
 
     $db_res = ReadData::getAvailibleEquipmentOnLocation($db, $params[APIMgmt::ID_KY]);
 

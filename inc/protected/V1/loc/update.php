@@ -3,9 +3,13 @@
     use apilib\ReqURI;
     use apilib\APIMgmt;
     use apidb\Db;
+    use apidb\SyUserAcl;
     use apidb\UpdateData;
 
     APIMgmt::checkMethod(array('POST'));
+    if (!SyUserAcl::hasPrivilege($user, SyUserAcl::MANAGER)) {
+        APIMgmt::sendResponse(1, "Forbidden", 403);
+    }
     $body_raw = ReqURI::getJsonBody();
     if (!is_array($body_raw)) { APIMgmt::badParamsResponse(); }
     APIMgmt::checkRequiredParams($body_raw, array(APIMgmt::ELEM_KY));

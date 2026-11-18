@@ -15,9 +15,13 @@
     $db = Db::connectDB();
 
     $body_raw = ReqURI::getJsonBody();
+    if (!is_array($body_raw)) { APIMgmt::badParamsResponse(); }
 
     $expected_params = array(APIMgmt::ELEM_KY, APIMgmt::PRNT_TO_KY, APIMgmt::PRNT_FROM_KY);
     APIMgmt::checkRequiredParams($body_raw, $expected_params);
+    foreach (array(APIMgmt::ELEM_KY, APIMgmt::PRNT_FROM_KY, APIMgmt::PRNT_TO_KY) as $field) {
+        if (!is_string($body_raw[$field]) || trim($body_raw[$field]) === '') { APIMgmt::badParamsResponse(); }
+    }
 
     $as_user_id = AclManager::managerSyUserChange($user, $body_raw); 
     $user_id = $as_user_id ? $as_user_id : $user[SyUser::$id];
@@ -27,9 +31,12 @@
     $toLocation_uuid = $body_raw[APIMgmt::PRNT_TO_KY];
 
     $transport = MdLoc::getMdLocByUUID($db, $transport_uuid);
+    if (!$transport) { APIMgmt::badParamsResponse(); }
     $transportProp = TLocProp::getTLocPropByLocId($db, $transport[MdLoc::$id]);
+    if (!$transportProp) { APIMgmt::badParamsResponse(); }
     $fromLocation = MdLoc::getMdLocByUUID($db, $fromLocation_uuid);
     $toLocation = MdLoc::getMdLocByUUID($db, $toLocation_uuid);
+    if (!$fromLocation || !$toLocation) { APIMgmt::badParamsResponse(); }
     
     $check = ReadData::canMoveTransport($db, $transport[MdLoc::$id]);
     $check = $check && $transportProp[TLocProp::$locIdPrnt] != $toLocation[MdLoc::$id];
@@ -45,11 +52,12 @@
         APIMgmt::badParamsResponse();
     }
 
-    $success = Transaction::transportLocationChange($db, $transport[MdLoc::$id], $user_id, $transportProp[TLocProp::$locIdPrnt], $toLocation[MdLoc::$id], $transportProp[TLocProp::$locStatId]);
+    $status = Transaction::transportLocationChange($db, $transport[MdLoc::$id], $user_id, $fromLocation[MdLoc::$id], $toLocation[MdLoc::$id], $transportProp[TLocProp::$locStatId], $user);
+    if ($status !== 200) { APIMgmt::sendResponse(1, $status === 409 ? "Movement conflict" : "Server error", $status); }
     
     $data = array();
 
-    $data[APIMgmt::ERR_KY] = $success ? 1 : 0;
+    $data[APIMgmt::ERR_KY] = 1;
     echo json_encode($data);
     
 ?>

@@ -3,6 +3,7 @@
     use apilib\ReqURI;
     use apilib\APIMgmt;
     use apidb\Db;
+    use apidb\SyUserAcl;
     use apidb\MdLoc;
 use apidb\MdLocStat;
 use apidb\MdLocType;
@@ -10,8 +11,10 @@ use apidb\MdLocType;
     use apidb\Transaction;
 
     APIMgmt::checkMethod(["POST"]);
+    if (!SyUserAcl::hasPrivilege($user, SyUserAcl::MANAGER)) {
+        APIMgmt::sendResponse(1, "Forbidden", 403);
+    }
     $db = Db::connectDB();
-    //TODO: check permissions to create
 
     $body_raw = ReqURI::getJsonBody();
 
@@ -21,17 +24,11 @@ use apidb\MdLocType;
     $data = $body_raw[APIMgmt::ELEM_KY];
     $toLocation_id = $body_raw[APIMgmt::PRNT_TO_KY];
     
+    APIMgmt::checkStringParams($data, array(APIMgmt::UUID, APIMgmt::CODE, APIMgmt::NAME, APIMgmt::DESC));
+    if (!isset($data[APIMgmt::ISACTIVE]) || !in_array($data[APIMgmt::ISACTIVE], array(0, 1, '0', '1'), true)
+        || !APIMgmt::positiveId($toLocation_id)) { APIMgmt::badParamsResponse(); }
     $toLocation = MdLoc::getMdLoc($db, $toLocation_id);
-
-
-    $check = isset($data[APIMgmt::UUID]) && !empty($data[APIMgmt::UUID]);
-    $check = $check && isset($data[APIMgmt::CODE]) && !empty($data[APIMgmt::CODE]);
-    $check = $check && isset($data[APIMgmt::NAME]) && !empty($data[APIMgmt::NAME]);
-    $check = $check && isset($data[APIMgmt::DESC]) && !empty($data[APIMgmt::DESC]);
-
-    if (!$check){
-        APIMgmt::badParamsResponse();
-    }
+    if (!$toLocation) { APIMgmt::badParamsResponse(); }
 
     $success = Transaction::createLocation($db, $data, $toLocation_id, MdLocType::TRANSPORT, MdLocStat::T_PARKED, $user[SyUser::$id]);
     $data = array();

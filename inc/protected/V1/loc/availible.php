@@ -14,15 +14,15 @@
     $db = Db::connectDB();
 
     $params_raw = ReqURI::getParams();
+    list($offset, $rowno) = APIMgmt::getPagination($params_raw);
 
     $expected_params = array(APIMgmt::RPP_KY, APIMgmt::PAGE_KY);
     $params = APIMgmt::checkParams($params_raw, $expected_params);
-    $offset = ($params[APIMgmt::PAGE_KY] - 1) * $params[APIMgmt::RPP_KY];
 
-    $fltr = $params[APIMgmt::FILTER_KY] ?? null;
-    $sort_key = $params[APIMgmt::SORT_KY] ?? 1;
+    $fltr = APIMgmt::optionalString($params, APIMgmt::FILTER_KY);
+    $sort_key = APIMgmt::sortKey($params);
 
-    $db_res = ReadData::getAvailibleLocationList($db, $sort_key, $fltr, $offset, $params[APIMgmt::RPP_KY]);
+    $db_res = ReadData::getAvailibleLocationList($db, $sort_key, $fltr, $offset, $rowno);
 
     if (is_null($db_res)) {
         APIMgmt::serverErrorResponse();

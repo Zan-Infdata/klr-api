@@ -17,7 +17,8 @@
     }
     $decoded = JWTManager::verifyJWT($token);
 
-    if (!$decoded || !array_key_exists(APIMgmt::ID, $decoded)) {
+    if (!$decoded || !APIMgmt::positiveId($decoded[APIMgmt::ID] ?? null)
+        || !in_array($decoded[JWTManager::IS_REFRESH] ?? null, array(1, '1'), true)) {
         include_once(ReqURI::get401FileName());
         exit();
     }

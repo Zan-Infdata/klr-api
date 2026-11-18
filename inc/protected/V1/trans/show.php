@@ -5,7 +5,6 @@
     use apidb\Db;
     use apidb\MdEq;
     use apidb\MdLoc;
-    use apidb\TEqProp;
 use apidb\TLocProp;
 
     APIMgmt::checkMethod(["GET"]);
@@ -14,17 +13,17 @@ use apidb\TLocProp;
     $params_raw = ReqURI::getParams();
 
     $expected_params = array(APIMgmt::ELEM_KY);
-    APIMgmt::checkRequiredParams($params_raw, $expected_params);
+    APIMgmt::checkStringParams($params_raw, $expected_params);
 
     $transport_uuid = $params_raw[APIMgmt::ELEM_KY];
     
     $transport = MdLoc::getMdLocByUUID($db, $transport_uuid);
+    APIMgmt::requireRecord($transport);
     $transportProp = TLocProp::getTLocPropByLocId($db, $transport[MdLoc::$id]);
-    $prntLocation = MdLoc::getMdLoc($db, $transportProp[TEqProp::$locId]);
+    APIMgmt::requireRecord($transportProp, 409);
+    $prntLocation = MdLoc::getMdLoc($db, $transportProp[TLocProp::$locIdPrnt]);
+    APIMgmt::requireRecord($prntLocation, 409);
 
-    if(!$transport){   
-        APIMgmt::badParamsResponse();
-    }
     
     $trnsData = array();
     

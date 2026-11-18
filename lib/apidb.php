@@ -317,6 +317,9 @@ use \PDO;
 		} // getAvailibleTransportsList
 
 		public static function getAvailibleTransportsList($db, $ordr, $f, $offset, $rowno) {
+            if (!is_int($offset) || !is_int($rowno) || $offset < 0
+                || $offset > (APIMgmt::PAGINATION_MAX_PAGE - 1) * APIMgmt::PAGINATION_MAX_RPP
+                || $rowno < 1 || $rowno > APIMgmt::PAGINATION_MAX_RPP) { return null; }
 
 
 			$qry =  " SELECT ";
@@ -360,9 +363,11 @@ use \PDO;
 					break;
 			} // switch
 
-			$qry .= " LIMIT ".$offset.", ".$rowno ;
+			$qry .= " LIMIT :offset, :rowno";
 
 			$statement = $db->prepare($qry);
+            $statement->bindValue(":offset", $offset, PDO::PARAM_INT);
+            $statement->bindValue(":rowno", $rowno, PDO::PARAM_INT);
 
 			if( !is_null($f)){
 				// prepare LIKE string for search
@@ -385,6 +390,9 @@ use \PDO;
 		} // getAvailibleTransportsList
 
 		public static function getAvailibleLocationList($db, $ordr, $f, $offset, $rowno) {
+            if (!is_int($offset) || !is_int($rowno) || $offset < 0
+                || $offset > (APIMgmt::PAGINATION_MAX_PAGE - 1) * APIMgmt::PAGINATION_MAX_RPP
+                || $rowno < 1 || $rowno > APIMgmt::PAGINATION_MAX_RPP) { return null; }
 
 
 			$qry =  " SELECT ";
@@ -424,9 +432,11 @@ use \PDO;
 					break;
 			} // switch
 
-			$qry .= " LIMIT ".$offset.", ".$rowno ;
+			$qry .= " LIMIT :offset, :rowno";
 
 			$statement = $db->prepare($qry);
+            $statement->bindValue(":offset", $offset, PDO::PARAM_INT);
+            $statement->bindValue(":rowno", $rowno, PDO::PARAM_INT);
 
 			if( !is_null($f)){
 				// prepare LIKE string for search
@@ -478,19 +488,16 @@ use \PDO;
 			$qry .= " AND    l.".MdLoc::$id." > 1";
 
 
-			$statement = $db->prepare($qry);
-
-			$statement->bindParam(":uid", $uid, PDO::PARAM_INT);
-
-			$statement->execute();
-
-			$res = array();
-
-			if($statement->rowCount() > 0){
-				$res = $statement->fetchAll(PDO::FETCH_ASSOC);
-			}
-
-			return $res;
+            try {
+                $statement = $db->prepare($qry);
+                if (!$statement || !$statement->bindParam(":uid", $uid, PDO::PARAM_INT) || !$statement->execute()) {
+                    return null;
+                }
+                $res = $statement->fetchAll(PDO::FETCH_ASSOC);
+                return is_array($res) ? $res : null;
+            } catch (PDOException $error) {
+                return null;
+            }
 
 
 		} // getAvailibleTransportsList
@@ -634,19 +641,16 @@ use \PDO;
 			$qry .= " GROUP BY ";
 			$qry .= "        l.".MdLoc::$id." " ;
 
-			$statement = $db->prepare($qry);
-
-			$statement->bindParam(":uid", $uid, PDO::PARAM_INT);
-
-			$statement->execute();
-
-			$res = array();
-
-			if($statement->rowCount() > 0){
-				$res = $statement->fetchAll(PDO::FETCH_ASSOC);
-			}
-
-			return $res;
+            try {
+                $statement = $db->prepare($qry);
+                if (!$statement || !$statement->bindParam(":uid", $uid, PDO::PARAM_INT) || !$statement->execute()) {
+                    return null;
+                }
+                $res = $statement->fetchAll(PDO::FETCH_ASSOC);
+                return is_array($res) ? $res : null;
+            } catch (PDOException $error) {
+                return null;
+            }
 
 
 		} // getUserTransportsReturnList
@@ -830,7 +834,7 @@ use \PDO;
 
 		} // canReturnTransport
 
-		public static function canTakeEquipment($db, $eid) {
+		public static function canTakeEquipment($db, $eid, $uid, $lid) {
 
 
 			$qry =  " SELECT ";
@@ -839,7 +843,9 @@ use \PDO;
 			$qry .= " FROM ";
 			$qry .= "        ".MdEq::$table." as e," ;
 			$qry .= "        ".TEqProp::$table." as ep," ;
-			$qry .= "        ".MdLoc::$table." as l" ;
+			$qry .= "        ".MdLoc::$table." as l," ;
+			$qry .= "        ".MdLoc::$table." as dest," ;
+			$qry .= "        ".TLocProp::$table." as dp" ;
 
 			$qry .= " WHERE ";
 
@@ -849,11 +855,22 @@ use \PDO;
 			$qry .= " AND    l.".MdLoc::$isActive." = 1" ;
 			$qry .= " AND    e.".MdEq::$id." = :i";
 			$qry .= " AND    e.".MdEq::$isActive." = 1";
+			// Loading follows ownership of an active, taken transport at the equipment's source.
+			$qry .= " AND    dest.".MdLoc::$id." = :lid";
+			$qry .= " AND    dest.".MdLoc::$typeId." = ".MdLocType::TRANSPORT;
+			$qry .= " AND    dest.".MdLoc::$isActive." = 1";
+			$qry .= " AND    dp.".TLocProp::$locId." = dest.".MdLoc::$id;
+			$qry .= " AND    dp.".TLocProp::$locStatId." = ".MdLocStat::T_TAKEN;
+			$qry .= " AND    dp.".TLocProp::$userId." = :uid";
+			$qry .= " AND    dp.".TLocProp::$locIdPrnt." = ep.".TEqProp::$locId;
+
 
 
 			$statement = $db->prepare($qry);
 			
 			$statement->bindParam(":i", $eid, PDO::PARAM_INT);
+			$statement->bindParam(":uid", $uid, PDO::PARAM_INT);
+			$statement->bindParam(":lid", $lid, PDO::PARAM_INT);
 			
 			$statement->execute();
 
@@ -1167,10 +1184,82 @@ use \PDO;
 
 		}
 
-		public static function locationStatusChange($db, $lid, $uid, $stat_f, $stat_t){
+        // Movement locks are always acquired by table, then ascending numeric ID:
+        // md_loc -> t_loc_prop -> md_eq -> t_eq_prop. Validate only these current reads.
+        private static function lockMovementRows($db, $table, $column, $ids) {
+            $ids = array_unique(array_map('intval', $ids));
+            sort($ids, SORT_NUMERIC);
+            $result = array();
+            foreach ($ids as $id) {
+                if ($id < 1) { return false; }
+                $statement = $db->prepare('SELECT * FROM ' . $table . ' WHERE ' . $column . ' = :id FOR UPDATE');
+                if (!$statement || !$statement->bindValue(':id', $id, PDO::PARAM_INT) || !$statement->execute()) {
+                    throw new \RuntimeException('Movement lock failed');
+                }
+                $rows = $statement->fetchAll(PDO::FETCH_ASSOC);
+                $statement->closeCursor();
+                if (!is_array($rows)) { throw new \RuntimeException('Movement read failed'); }
+                if (count($rows) > 1) { return false; }
+                $result[$id] = $rows ? $rows[0] : false;
+            }
+            return $result;
+        }
+
+        private static function lockMovementLocations($db, $ids) {
+            $locations = self::lockMovementRows($db, MdLoc::$table, MdLoc::$id, $ids);
+            if ($locations === false || in_array(false, $locations, true)) { return false; }
+            $properties = self::lockMovementRows($db, TLocProp::$table, TLocProp::$locId, $ids);
+            return $properties === false ? false : array('locations' => $locations, 'properties' => $properties);
+        }
+
+        private static function isMovementId($id) {
+            return (is_int($id) || is_string($id))
+                && filter_var($id, FILTER_VALIDATE_INT, array('options' => array('min_range' => 1))) !== false;
+        }
+
+        private static function movementOwnerAllowed($property, $actor) {
+            return is_array($actor) && isset($actor[SyUser::$id], $actor[SyUser::$aclId])
+                && ($property[TLocProp::$userId] == $actor[SyUser::$id]
+                    || SyUserAcl::hasPrivilege($actor, SyUserAcl::MANAGER));
+        }
+
+        private static function rejectMovement($db) {
+            if (!$db->rollBack()) { throw new \RuntimeException('Movement rollback failed'); }
+            return 409;
+        }
+
+        private static function failMovement($db) {
+            try { if ($db->inTransaction()) { $db->rollBack(); } } catch (\Throwable $ignored) { }
+            return 500;
+        }
+
+		public static function locationStatusChange($db, $lid, $uid, $stat_f, $stat_t, $actor){
+
+            if (!(self::isMovementId($lid) && self::isMovementId($uid))) { return 409; }
+            if ($db->inTransaction()) { return 500; }
 
 			try {
-				$db->beginTransaction();
+                if (!$db->beginTransaction()) { throw new \RuntimeException('Movement transaction failed'); }
+                // This unlocked read only discovers the parent ID for deterministic lock ordering.
+                // The locked property below must still reference that parent, otherwise reject.
+                $hint = TLocProp::getTLocPropByLocId($db, $lid);
+                if (!$hint) { return self::rejectMovement($db); }
+                $parentId = $hint[TLocProp::$locIdPrnt];
+                $locked = self::lockMovementLocations($db, array($lid, $parentId));
+                if (!$locked || !$locked['properties'][$lid]) { return self::rejectMovement($db); }
+                $transport = $locked['locations'][$lid];
+                $property = $locked['properties'][$lid];
+                $parent = $locked['locations'][$parentId];
+                $taking = $stat_f == MdLocStat::T_PARKED && $stat_t == MdLocStat::T_TAKEN;
+                $returning = $stat_f == MdLocStat::T_TAKEN && $stat_t == MdLocStat::T_PARKED;
+                $valid = $transport[MdLoc::$typeId] == MdLocType::TRANSPORT && $transport[MdLoc::$isActive] == 1
+                    && $property[TLocProp::$locStatId] == $stat_f && $property[TLocProp::$locIdPrnt] == $parentId
+                    && ($taking || ($returning && $parent[MdLoc::$typeId] == MdLocType::WAREHOUSE
+                        && self::movementOwnerAllowed($property, $actor)));
+                // Returning a loaded transport does not alter its equipment or parent.
+                if (!$valid) { return self::rejectMovement($db); }
+
+
 
 				$qry = "";
 				$qry .=  " UPDATE ";
@@ -1185,7 +1274,7 @@ use \PDO;
 
 				$statement = $db->prepare($qry);
 				$statement->bindParam(":lid", $lid , PDO::PARAM_INT);
-				$statement->execute();
+				if (!$statement->execute()) { throw new \RuntimeException('Movement write failed'); }
 				$statement->closeCursor();
 
 
@@ -1214,7 +1303,7 @@ use \PDO;
 				$statement->bindParam(":sf", $stat_f , PDO::PARAM_INT);
 				$statement->bindParam(":st", $stat_t , PDO::PARAM_INT);
 				$statement->bindParam(":uid", $uid , PDO::PARAM_INT);
-				$statement->execute();
+				if (!$statement->execute()) { throw new \RuntimeException('Movement write failed'); }
 				$statement->closeCursor();
 
 
@@ -1234,26 +1323,56 @@ use \PDO;
 				$statement->bindParam(":lid", $lid , PDO::PARAM_INT);
 				$statement->bindParam(":st", $stat_t , PDO::PARAM_INT);
 				$statement->bindParam(":uid", $uid , PDO::PARAM_INT);
-				$statement->execute();
+				if (!$statement->execute()) { throw new \RuntimeException('Movement write failed'); }
+                if ($statement->rowCount() !== 1) { throw new \RuntimeException('Movement property update failed'); }
 				$statement->closeCursor();
 
-				$db->commit();
+                if (!$db->commit()) { throw new \RuntimeException('Movement commit failed'); }
+                return 200;
 
-				return true;
-
-			} catch (PDOException $e) {
-				$db->rollBack();
-				throw $e;
-			}
+            } catch (\Throwable $error) {
+                return self::failMovement($db);
+            }
 
 
 		}
 
 
-		public static function equipmentLocationChange($db, $eid, $uid, $lfid, $ltid){
+		public static function equipmentLocationChange($db, $eid, $uid, $lfid, $ltid, $operation){
+
+            if (!(self::isMovementId($eid) && self::isMovementId($uid) && self::isMovementId($lfid) && self::isMovementId($ltid))) { return 409; }
+            if ($db->inTransaction()) { return 500; }
 
 			try {
-				$db->beginTransaction();
+                if (!$db->beginTransaction()) { throw new \RuntimeException('Movement transaction failed'); }
+                $locked = self::lockMovementLocations($db, array($lfid, $ltid));
+                if (!$locked) { return self::rejectMovement($db); }
+                $equipmentRows = self::lockMovementRows($db, MdEq::$table, MdEq::$id, array($eid));
+                $propertyRows = self::lockMovementRows($db, TEqProp::$table, TEqProp::$equipmentId, array($eid));
+                if (!$equipmentRows || !$equipmentRows[$eid] || !$propertyRows || !$propertyRows[$eid]) {
+                    return self::rejectMovement($db);
+                }
+                $equipment = $equipmentRows[$eid];
+                $property = $propertyRows[$eid];
+                $from = $locked['locations'][$lfid];
+                $to = $locked['locations'][$ltid];
+                $valid = $equipment[MdEq::$isActive] == 1 && $property[TEqProp::$locId] == $lfid && $lfid != $ltid;
+                if ($operation === 'take') {
+                    $transportProperty = $locked['properties'][$ltid];
+                    $valid = $valid && in_array($from[MdLoc::$typeId], array(MdLocType::WAREHOUSE, MdLocType::CONSTRUCTION_SITE))
+                        && $from[MdLoc::$isActive] == 1 && $to[MdLoc::$typeId] == MdLocType::TRANSPORT
+                        && $to[MdLoc::$isActive] == 1 && $transportProperty
+                        && $transportProperty[TLocProp::$locStatId] == MdLocStat::T_TAKEN
+                        && $transportProperty[TLocProp::$userId] == $uid && $transportProperty[TLocProp::$locIdPrnt] == $lfid;
+                } elseif ($operation === 'leave') {
+                    $transportProperty = $locked['properties'][$lfid];
+                    $valid = $valid && $from[MdLoc::$typeId] == MdLocType::TRANSPORT && $from[MdLoc::$isActive] == 1
+                        && $transportProperty && $transportProperty[TLocProp::$locStatId] == MdLocStat::T_TAKEN
+                        && $transportProperty[TLocProp::$userId] == $uid && $transportProperty[TLocProp::$locIdPrnt] == $ltid;
+                } else { $valid = false; }
+                if (!$valid) { return self::rejectMovement($db); }
+
+
 
 				$qry = "";
 				$qry .=  " UPDATE ";
@@ -1268,7 +1387,7 @@ use \PDO;
 
 				$statement = $db->prepare($qry);
 				$statement->bindParam(":eid", $eid , PDO::PARAM_INT);
-				$statement->execute();
+				if (!$statement->execute()) { throw new \RuntimeException('Movement write failed'); }
 				$statement->closeCursor();
 
 
@@ -1297,7 +1416,7 @@ use \PDO;
 				$statement->bindParam(":lfid", $lfid , PDO::PARAM_INT);
 				$statement->bindParam(":ltid", $ltid , PDO::PARAM_INT);
 				$statement->bindParam(":uid", $uid , PDO::PARAM_INT);
-				$statement->execute();
+				if (!$statement->execute()) { throw new \RuntimeException('Movement write failed'); }
 				$statement->closeCursor();
 
 
@@ -1317,25 +1436,39 @@ use \PDO;
 				$statement->bindParam(":eid", $eid , PDO::PARAM_INT);
 				$statement->bindParam(":ltid", $ltid , PDO::PARAM_INT);
 				$statement->bindParam(":uid", $uid , PDO::PARAM_INT);
-				$statement->execute();
+				if (!$statement->execute()) { throw new \RuntimeException('Movement write failed'); }
+                if ($statement->rowCount() !== 1) { throw new \RuntimeException('Movement property update failed'); }
 				$statement->closeCursor();
 
-				$db->commit();
+                if (!$db->commit()) { throw new \RuntimeException('Movement commit failed'); }
+                return 200;
 
-				return true;
-
-			} catch (PDOException $e) {
-				$db->rollBack();
-				throw $e;
-			}
+            } catch (\Throwable $error) {
+                return self::failMovement($db);
+            }
 
 
 		}
 
-		public static function transportLocationChange($db, $lid, $uid, $lfid, $ltid, $status){
+		public static function transportLocationChange($db, $lid, $uid, $lfid, $ltid, $status, $actor){
+
+            if (!(self::isMovementId($lid) && self::isMovementId($uid) && self::isMovementId($lfid) && self::isMovementId($ltid))) { return 409; }
+            if ($db->inTransaction()) { return 500; }
 
 			try {
-				$db->beginTransaction();
+                if (!$db->beginTransaction()) { throw new \RuntimeException('Movement transaction failed'); }
+                $locked = self::lockMovementLocations($db, array($lid, $lfid, $ltid));
+                if (!$locked || !$locked['properties'][$lid]) { return self::rejectMovement($db); }
+                $transport = $locked['locations'][$lid];
+                $property = $locked['properties'][$lid];
+                $to = $locked['locations'][$ltid];
+                $valid = $transport[MdLoc::$typeId] == MdLocType::TRANSPORT && $transport[MdLoc::$isActive] == 1
+                    && $property[TLocProp::$locStatId] == MdLocStat::T_TAKEN && $property[TLocProp::$locStatId] == $status
+                    && $property[TLocProp::$locIdPrnt] == $lfid && $lfid != $ltid
+                    && $to[MdLoc::$typeId] != MdLocType::TRANSPORT && self::movementOwnerAllowed($property, $actor);
+                if (!$valid) { return self::rejectMovement($db); }
+
+
 
 				$qry = "";
 				$qry .=  " UPDATE ";
@@ -1350,7 +1483,7 @@ use \PDO;
 
 				$statement = $db->prepare($qry);
 				$statement->bindParam(":lid", $lid , PDO::PARAM_INT);
-				$statement->execute();
+				if (!$statement->execute()) { throw new \RuntimeException('Movement write failed'); }
 				$statement->closeCursor();
 
 
@@ -1378,7 +1511,7 @@ use \PDO;
 				$statement->bindParam(":lid", $lid , PDO::PARAM_INT);
 				$statement->bindParam(":s", $status , PDO::PARAM_INT);
 				$statement->bindParam(":uid", $uid , PDO::PARAM_INT);
-				$statement->execute();
+				if (!$statement->execute()) { throw new \RuntimeException('Movement write failed'); }
 				$statement->closeCursor();
 
 				$insertedId = $db->lastInsertId();
@@ -1404,7 +1537,7 @@ use \PDO;
 				$statement->bindParam(":tid", $insertedId , PDO::PARAM_INT);
 				$statement->bindParam(":lfid", $lfid , PDO::PARAM_INT);
 				$statement->bindParam(":ltid", $ltid , PDO::PARAM_INT);
-				$statement->execute();
+				if (!$statement->execute()) { throw new \RuntimeException('Movement write failed'); }
 				$statement->closeCursor();
 
 
@@ -1424,17 +1557,16 @@ use \PDO;
 				$statement->bindParam(":lid", $lid , PDO::PARAM_INT);
 				$statement->bindParam(":ltid", $ltid , PDO::PARAM_INT);
 				$statement->bindParam(":uid", $uid , PDO::PARAM_INT);
-				$statement->execute();
+				if (!$statement->execute()) { throw new \RuntimeException('Movement write failed'); }
+                if ($statement->rowCount() !== 1) { throw new \RuntimeException('Movement property update failed'); }
 				$statement->closeCursor();
 
-				$db->commit();
+                if (!$db->commit()) { throw new \RuntimeException('Movement commit failed'); }
+                return 200;
 
-				return true;
-
-			} catch (PDOException $e) {
-				$db->rollBack();
-				throw $e;
-			}
+            } catch (\Throwable $error) {
+                return self::failMovement($db);
+            }
 
 
 		}
@@ -1476,6 +1608,16 @@ use \PDO;
         public static $refreshToken  = 'SY_USER_REFRESH_TKN';
 
 		
+        // Authentication lookups must recheck the account's current enabled state.
+        public static function getActiveSyUser($c, $i) {
+            $qry = "SELECT * FROM " . self::$table . " WHERE " . self::$id . " = :id";
+            $qry .= " AND " . self::$isActive . " = 1";
+            $stmt = $c->prepare($qry);
+            $stmt->bindParam(":id", $i, PDO::PARAM_INT);
+            $stmt->execute();
+            return $stmt->fetch(PDO::FETCH_ASSOC);
+        }
+
 		public static function getSyUser($c, $i) {
 
 			$qry = "SELECT * " ;
@@ -1552,7 +1694,7 @@ use \PDO;
 		}
 	
 		public static function getMdLocByUUID($c, $i) {
-			$qry = "SELECT * FROM " . self::$table . " WHERE " . self::$uuid . " LIKE :uuid";
+			$qry = "SELECT * FROM " . self::$table . " WHERE " . self::$uuid . " = :uuid";
 
 			$stmt = $c->prepare($qry);
 			$stmt->bindParam(":uuid", $i, PDO::PARAM_STR);
@@ -1680,7 +1822,7 @@ use \PDO;
 		}
 	
 		public static function getMdEqByUUID($c, $i) {
-			$qry = "SELECT * FROM " . self::$table . " WHERE " . self::$uuid . " LIKE :id";
+			$qry = "SELECT * FROM " . self::$table . " WHERE " . self::$uuid . " = :id";
 			
 			$stmt = $c->prepare($qry);
 			$stmt->bindParam(":id", $i, PDO::PARAM_STR);

@@ -9,16 +9,22 @@ use apidb\ReadData;
 use apidb\SyUser;
 use apidb\Transaction;
 use apidb\TEqProp;
-use apidb\TLocProp;
 use apilib\AclManager;
 
     APIMgmt::checkMethod(["POST"]);
     $db = Db::connectDB();
 
     $body_raw = ReqURI::getJsonBody();
+    if (!is_array($body_raw)) { APIMgmt::badParamsResponse(); }
 
     $expected_params = array(APIMgmt::ELEM_LIST_KY, APIMgmt::PRNT_TO_KY, APIMgmt::PRNT_FROM_KY);
     APIMgmt::checkRequiredParams($body_raw, $expected_params);
+    foreach (array(APIMgmt::PRNT_FROM_KY, APIMgmt::PRNT_TO_KY) as $field) {
+        if (!is_string($body_raw[$field]) || trim($body_raw[$field]) === '') { APIMgmt::badParamsResponse(); }
+    }
+    if (!is_array($body_raw[APIMgmt::ELEM_LIST_KY]) || !array_is_list($body_raw[APIMgmt::ELEM_LIST_KY]) || !ReqURI::isJsonList(APIMgmt::ELEM_LIST_KY)) {
+        APIMgmt::badParamsResponse();
+    }
 
     $as_user_id = AclManager::managerSyUserChange($user, $body_raw); 
     $user_id = $as_user_id ? $as_user_id : $user[SyUser::$id];
@@ -29,21 +35,21 @@ use apilib\AclManager;
 
     foreach ($body_raw[APIMgmt::ELEM_LIST_KY] as $equipment_uuid ){
     
-        $equipment = MdEq::getMdEqByUUID($db, $equipment_uuid);
-        $equipmentProp = TEqProp::getTEqPropByEqId($db,$equipment[MdEq::$id]);
+        $equipment = is_string($equipment_uuid) && trim($equipment_uuid) !== ''
+            ? MdEq::getMdEqByUUID($db, $equipment_uuid) : false;
+        $equipmentProp = $equipment ? TEqProp::getTEqPropByEqId($db, $equipment[MdEq::$id]) : false;
         $fromLocation = MdLoc::getMdLocByUUID($db, $fromLocation_uuid);
         $toLocation = MdLoc::getMdLocByUUID($db, $toLocation_uuid);
-        $toLocationProp = TLocProp::getTLocPropByLocId($db, $toLocation[MdLoc::$id]);
     
-        $check = ReadData::canTakeEquipment($db, $equipment[MdEq::$id]);
+        $check = $equipment && $equipmentProp && $fromLocation && $toLocation;
+        $check = $check && ReadData::canTakeEquipment($db, $equipment[MdEq::$id], $user_id, $toLocation[MdLoc::$id]);
         $check = $check && $fromLocation[MdLoc::$id] == $equipmentProp[TEqProp::$locId];
-        $check = $check && $fromLocation[MdLoc::$id] == $toLocationProp[TLocProp::$locIdPrnt];
 
         if (!$check){
             $success = false;
         }
         else {
-            $success = Transaction::equipmentLocationChange($db, $equipment[MdEq::$id], $user_id, $equipmentProp[TEqProp::$locId], $toLocation[MdLoc::$id]);
+            $success = Transaction::equipmentLocationChange($db, $equipment[MdEq::$id], $user_id, $equipmentProp[TEqProp::$locId], $toLocation[MdLoc::$id], 'take') === 200;
         }
 
         array_push($successes, $success ? 1 : 0);

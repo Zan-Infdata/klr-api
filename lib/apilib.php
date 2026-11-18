@@ -13,7 +13,22 @@
     use apidb\SyUser;
 use apidb\SyUserAcl;
 
+    // Resolve runtime configuration beside this library, independently of the working directory.
+    $configFile = __DIR__ . '/api.conf';
+    $config = is_file($configFile) && is_readable($configFile)
+        ? @parse_ini_file($configFile, true, INI_SCANNER_RAW) : false;
+    define(__NAMESPACE__ . '\\CONFIG', is_array($config) ? $config : array());
+
+    class Environment {
+        public static function isProduction() {
+            // Diagnostics require an explicit development profile; unknown/missing values stay disabled.
+            return (CONFIG['environment'] ?? 'production') !== 'development';
+        }
+    }
+
     class AuthManager {
+        // Public dummy hash: missing users still perform password verification.
+        const DUMMY_PASSWORD_HASH = '$2y$12$u/sdERdSGpiCDs.VTe2NJO0S0Hl0fD7UrNK55nQGV54UmnVRoeWKu';
 
 
         const TOKEN_KY = "Authorization" ;
@@ -29,7 +44,7 @@ use apidb\SyUserAcl;
 
             $apiKY = self::getAuthorizationHeader();
 
-			return is_null($apiKY) ? null : str_replace('Bearer ', '', $apiKY);
+			return is_string($apiKY) ? str_replace('Bearer ', '', $apiKY) : null;
 
         } // getTokenFromHeader
 
@@ -42,9 +57,11 @@ use apidb\SyUserAcl;
 			}
 
 			$decoded = JWTManager::verifyJWT(str_replace('Bearer ', '', $apiKY));
+            if (!is_array($decoded) || !APIMgmt::positiveId($decoded[APIMgmt::ID] ?? null)
+                || !in_array($decoded[JWTManager::IS_REFRESH] ?? null, array(0, '0'), true)) { return null; }
 
 			$db = Db::connectDB();
-			$user = SyUser::getSyUser($db, $decoded[APIMgmt::ID]);
+			$user = SyUser::getActiveSyUser($db, $decoded[APIMgmt::ID]);
 
 			return $user;
 		} // getUserFromHeader
@@ -59,9 +76,11 @@ use apidb\SyUserAcl;
 
 		public static function managerSyUserChange($user, $data){
 			
-			if(!$data){
-				return false;
-			}
+            if ($data === null || $data === array()) { return false; }
+            if (!is_array($data)) { APIMgmt::badParamsResponse(); }
+            $selected = $data[APIMgmt::AS_USER_KY] ?? null;
+            if ($selected === null || $selected === '') { return false; }
+            if (!APIMgmt::positiveId($selected)) { APIMgmt::badParamsResponse(); }
 
 			if (!SyUserAcl::hasPrivilege($user, SyUserAcl::MANAGER)){
 				return false;
@@ -111,6 +130,7 @@ use apidb\SyUserAcl;
         public static $reqArray = array();
 		protected static $paramArray = array();
 		protected static $jsonBody = array();
+        protected static $jsonBodyShape;
 
 
 		public static $rootMap = array(
@@ -122,10 +142,11 @@ use apidb\SyUserAcl;
 
 
 		public static function readURI($url) {
+            if (!is_string($url)) { APIMgmt::badParamsResponse(); }
 
-			error_log("API called: ".$url);
 
 			$prsu = parse_url($url) ;
+            if (!is_array($prsu) || !isset($prsu['path']) || !is_string($prsu['path'])) { APIMgmt::badParamsResponse(); }
 			$urlSeg = explode('/', $prsu['path']);
 
 			self::setSegment($urlSeg, 0, URIinx::DOMAIN) ;
@@ -134,17 +155,13 @@ use apidb\SyUserAcl;
 			self::setSegment($urlSeg, 3, URIinx::ENTITY) ;
 			self::setSegment($urlSeg, 4, URIinx::ENDPOINT) ;
 
-			// parse GET params
-			if (isset($prsu['query'])) {
-				$urlParam = explode('&',$prsu['query']);
-				self::setParams($urlParam);
-			}
-			else {
-				self::$paramArray = null;
-			}
+            // Standard form/query decoding, exactly once (including +, %, &, and =).
+            self::setParams($prsu['query'] ?? '');
 
 			// parse POST body
-			self::$jsonBody = json_decode(file_get_contents("php://input"), true);
+            $body = file_get_contents("php://input");
+            self::$jsonBody = json_decode($body, true);
+            self::$jsonBodyShape = json_decode($body);
 
 		} // readURI
 
@@ -162,18 +179,10 @@ use apidb\SyUserAcl;
 		} // setSegment
 
 		
-        private static function setParams($seg){
-
-			foreach ($seg as $curr){
-				if($curr == ""){
-					continue;
-				}
-				
-				$currPair = explode('=', $curr);
-				self::$paramArray[$currPair[0]] = $currPair[1];
-			}
-
-		} // setParams
+        private static function setParams($query) {
+            parse_str($query, $params);
+            self::$paramArray = $params;
+        } // setParams
 
         public static function isProtectedCall(){
 
@@ -187,9 +196,18 @@ use apidb\SyUserAcl;
 		} // getParams
 
         public static function getJsonBody(){
+            if (!is_array(self::$jsonBody) || array_is_list(self::$jsonBody)) { APIMgmt::badParamsResponse(); }
 				return self::$jsonBody;
 		} // getJsonBody
 
+
+        public static function isJsonList($key) {
+            // Associative decoding alone cannot distinguish [] from {} or {"0": ...}.
+            if (is_object(self::$jsonBodyShape)) {
+                return property_exists(self::$jsonBodyShape, $key) && is_array(self::$jsonBodyShape->{$key});
+            }
+            return isset(self::$jsonBody[$key]) && is_array(self::$jsonBody[$key]) && array_is_list(self::$jsonBody[$key]);
+        }
 
         public static function isCallPing(){
 			$test = false;
@@ -295,80 +313,51 @@ use apidb\SyUserAcl;
 
 
     class RateLimiter {
-
         const RPM = 60;
-        const MAX_RATE_SPEED_SEC = 1;
+        const AUTH_RPM = 10;
         const TIME_WINDOW_SEC = 60;
+        // Retained for existing callers; the active policy permits bursts within minute budgets.
+        const MAX_RATE_SPEED_SEC = 1;
+        private static $retryAfter = 0;
 
-
-        public static function canRequest($apyky) {
-
-            $out = true;
-
-            TestLogger::clear();
-            TestLogger::log(time());
-
-            // if cache is not set init cache and add request to cache
-            if (!SessionMgmt::isCacheSet($apyky)){
-                
-                SessionMgmt::initCache($apyky);
-                SessionMgmt::addCache(time(), $apyky);
-
-            }  
-            else {
-                // clear expired requests cache if needed
-                if (count(SessionMgmt::getCache($apyky)) >= self::RPM){
-                    self::clearExpiredCache($apyky);
-                } 
-                // check if last request was more than a second ago
-                $check = self::checkTimeSinceLastRequest($apyky);
-
-                if (count(SessionMgmt::getCache($apyky)) >= self::RPM || !$check) {
-                    $out = false;
-                }
-
-                else {
-                    SessionMgmt::addCache(time(), $apyky);
-                }
-                
-
-
-            }
-
-            return $out;
-
-
-        } // canRequest
-
-        private static function clearExpiredCache($apyky){
-            $expired = array();
-            foreach ( SessionMgmt::getCache($apyky) as $curr ){
-                // if cache is older than the time window
-                if (time() >= $curr + self::TIME_WINDOW_SEC){
-                    array_push($expired, $curr);
-                }
-            }
-
-            $newCache = array_values(array_diff(SessionMgmt::getCache($apyky), $expired));
-
-            SessionMgmt::setCache($newCache, $apyky);
-        } // clearExpiredCache
-
-        private static function checkTimeSinceLastRequest($apyky){
+        public static function canRequest($apyky, $limit = self::RPM) {
+            $now = microtime(true);
+            if (!isset($_SESSION[SessionMgmt::CACHE_KY]) || !is_array($_SESSION[SessionMgmt::CACHE_KY])) { SessionMgmt::clearCache(); }
             $cache = SessionMgmt::getCache($apyky);
-            $out = true;
-
-            if (count($cache) > 0){
-                $lastTime = $cache[count($cache)-1];
-                $out = time()-$lastTime > self::MAX_RATE_SPEED_SEC-1;
+            $cache = is_array($cache) ? $cache : array();
+            $cache = array_values(array_filter($cache, function($stamp) use ($now) {
+                return (is_int($stamp) || is_float($stamp)) && $stamp > $now - self::TIME_WINDOW_SEC;
+            }));
+            sort($cache, SORT_NUMERIC);
+            SessionMgmt::setCache($cache, $apyky);
+            self::$retryAfter = 0;
+            if (count($cache) >= $limit) {
+                self::$retryAfter = max(1, (int) ceil($cache[0] + self::TIME_WINDOW_SEC - $now));
+                return false;
             }
+            SessionMgmt::addCache($now, $apyky);
+            return true;
+        }
 
-            return $out;
+        public static function getRetryAfter() { return self::$retryAfter; }
 
-        } // checkTimeSinceLastRequest
+        private static function rejectRequest() {
+            $retryAfter = self::$retryAfter;
+            if (!session_write_close()) { APIMgmt::sendResponse(1, 'Service unavailable', 503); }
+            header('Retry-After: ' . $retryAfter);
+            APIMgmt::sendResponse(1, 'Too many requests', 429);
+        }
 
-
-
+        public static function enforceRequest() {
+            if (session_status() !== PHP_SESSION_ACTIVE) { APIMgmt::sendResponse(1, 'Service unavailable', 503); }
+            if (!self::canRequest('api')) { self::rejectRequest(); }
+            $route = ReqURI::$reqArray;
+            if (($route[URIinx::ROOT] ?? null) === ReqURI::URLMAP_CALL_KY && ($route[URIinx::ENTITY] ?? null) === 'auth') {
+                if (!self::canRequest('auth', self::AUTH_RPM)) { self::rejectRequest(); }
+            }
+            // Persist counters atomically, then release the session lock before DB/network work.
+            if (!session_write_close()) { APIMgmt::sendResponse(1, 'Service unavailable', 503); }
+        }
     } // RateLimiter
 
 
@@ -482,6 +471,9 @@ use apidb\SyUserAcl;
 		const FILTER_KY	 = "fltr";
 		const RPP_KY	 = "rpp";
 		const PAGE_KY	 = "pge";
+
+        const PAGINATION_MAX_RPP = 1000;
+        const PAGINATION_MAX_PAGE = 1000000;
 		const SORT_KY	 = "srt";
 
         const PWD_KY     = "gsl";
@@ -579,32 +571,69 @@ use apidb\SyUserAcl;
 			return $method;
 		}
 		
-		public static function checkParams($params, $expected){
+        public static function getPagination($params) {
+            if (!is_array($params)) { self::badParamsResponse(); }
+            $values = array();
+            foreach (array(self::RPP_KY => self::PAGINATION_MAX_RPP, self::PAGE_KY => self::PAGINATION_MAX_PAGE) as $key => $maximum) {
+                $value = $params[$key] ?? null;
+                if ((!is_int($value) && !is_string($value))
+                    || !preg_match('/^[1-9][0-9]*$/D', (string) $value)) { self::badParamsResponse(); }
+                $value = filter_var($value, FILTER_VALIDATE_INT, array('options' => array('min_range' => 1, 'max_range' => $maximum)));
+                if ($value === false) { self::badParamsResponse(); }
+                $values[$key] = $value;
+            }
+            return array(($values[self::PAGE_KY] - 1) * $values[self::RPP_KY], $values[self::RPP_KY]);
+        }
 
-			if (isset($params)) {
-				foreach ($expected as $curr) {
-					$params[$curr] = isset($params[$curr]) ? $params[$curr] : null;
-				}
-			}
-			return $params;
-		}
-		
-		public static function checkRequiredParams($params, $expected){
-			$out = isset($params);
+        public static function nonEmptyString($value) {
+            return is_string($value) && trim($value) !== '';
+        }
 
-			if (isset($params)) {
-				foreach ($expected as $curr) {
-					if (!array_key_exists($curr, $params)) {
-						$out = false;
-					}
-				}
-			}
+        public static function positiveId($value) {
+            return (is_int($value) || is_string($value))
+                && filter_var($value, FILTER_VALIDATE_INT, array('options' => array('min_range' => 1))) !== false;
+        }
 
-			if (!$out) {
-				APIMgmt::badParamsResponse();
-			}
+        public static function checkStringParams($params, $keys) {
+            self::checkRequiredParams($params, $keys);
+            foreach ($keys as $key) {
+                if (!self::nonEmptyString($params[$key])) { self::badParamsResponse(); }
+            }
+        }
 
-		}
+        public static function optionalString($params, $key) {
+            $value = $params[$key] ?? null;
+            if ($value !== null && !is_string($value)) { self::badParamsResponse(); }
+            return $value;
+        }
+
+        public static function sortKey($params) {
+            $value = $params[self::SORT_KY] ?? 1;
+            if ((!is_int($value) && !is_string($value)) || !in_array($value, array(1, 2, 3, '1', '2', '3'), true)) {
+                self::badParamsResponse();
+            }
+            return (int) $value;
+        }
+
+        public static function requireRecord($record, $status = 404) {
+            if (!is_array($record) || !$record) {
+                self::sendResponse(1, $status === 404 ? 'Record not found' : 'Incomplete record', $status);
+            }
+        }
+
+        public static function checkParams($params, $expected) {
+            if ($params === null) { $params = array(); }
+            if (!is_array($params) || ($params && array_is_list($params))) { self::badParamsResponse(); }
+            foreach ($expected as $key) { $params[$key] = $params[$key] ?? null; }
+            return $params;
+        }
+
+        public static function checkRequiredParams($params, $expected) {
+            if (!is_array($params) || array_is_list($params)) { self::badParamsResponse(); }
+            foreach ($expected as $key) {
+                if (!array_key_exists($key, $params)) { self::badParamsResponse(); }
+            }
+        }
 
 
     } // APIMgmt
@@ -653,11 +682,14 @@ use apidb\SyUserAcl;
 		}
 		
 		public static function verifyJWT($token) {
+            if (!is_string($token)) { return null; }
 			$parts = explode('.', $token);
 			if (count($parts) !== 3) return null;
 
 			list($header, $payload, $signature) = $parts;
 			$decodedPayload = json_decode(self::base64UrlDecode($payload), true);
+            if (!is_array($decodedPayload) || array_is_list($decodedPayload)
+                || !isset($decodedPayload['exp']) || !is_int($decodedPayload['exp'])) { return null; }
 			
 			if (isset($decodedPayload['exp']) && time() > $decodedPayload['exp']) return null;
 		

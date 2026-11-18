@@ -16,18 +16,16 @@ use apidb\TLocTrns;
     $params_raw = ReqURI::getParams();
 
     $expected_params = array(APIMgmt::ELEM_KY);
-    APIMgmt::checkRequiredParams($params_raw, $expected_params);
+    APIMgmt::checkStringParams($params_raw, $expected_params);
 
     $transport_uuid = $params_raw[APIMgmt::ELEM_KY];
-    $date_from = urldecode($params_raw[APIMgmt::DATE_FROM_KY]) ?? null;
-    $date_to = urldecode($params_raw[APIMgmt::DATE_TO_KY]) ?? null;
+    $date_from = APIMgmt::optionalString($params_raw, APIMgmt::DATE_FROM_KY);
+    $date_to = APIMgmt::optionalString($params_raw, APIMgmt::DATE_TO_KY);
 
     $transport = MdLoc::getMdLocByUUID($db, $transport_uuid);
+    APIMgmt::requireRecord($transport);
     $transport_transitions = ReadData::getTLocTrnsForTrans($db, $transport[MdLoc::$id], $date_from, $date_to);
 
-    if(!$transport){   
-        APIMgmt::badParamsResponse();
-    }
     
     $history = array();
     foreach ($transport_transitions as $row) {

@@ -13,14 +13,16 @@
     $db = Db::connectDB();
 
     $params_raw = ReqURI::getParams();
+    list($offset, $rowno) = APIMgmt::getPagination($params_raw);
 
 
     $expected_params = array(APIMgmt::FILTER_KY, APIMgmt::RPP_KY, APIMgmt::PAGE_KY, APIMgmt::SORT_KY);
     $params = APIMgmt::checkParams($params_raw, $expected_params);
-    $offset = ($params[APIMgmt::PAGE_KY] - 1) * $params[APIMgmt::RPP_KY];
+    $fltr = APIMgmt::optionalString($params, APIMgmt::FILTER_KY);
+    $sort_key = APIMgmt::sortKey($params);
 
 
-    $db_res = ReadData::getAvailibleTransportsList($db, $params[APIMgmt::SORT_KY], $params[APIMgmt::FILTER_KY], $offset, $params[APIMgmt::RPP_KY]);
+    $db_res = ReadData::getAvailibleTransportsList($db, $sort_key, $fltr, $offset, $rowno);
 
     if (is_null($db_res)) {
         APIMgmt::serverErrorResponse();

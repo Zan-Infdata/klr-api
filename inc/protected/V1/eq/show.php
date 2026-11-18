@@ -13,17 +13,17 @@
     $params_raw = ReqURI::getParams();
 
     $expected_params = array(APIMgmt::ELEM_KY);
-    APIMgmt::checkRequiredParams($params_raw, $expected_params);
+    APIMgmt::checkStringParams($params_raw, $expected_params);
 
     $equipment_uuid = $params_raw[APIMgmt::ELEM_KY];
     
     $equipment = MdEq::getMdEqByUUID($db, $equipment_uuid);
+    APIMgmt::requireRecord($equipment);
     $equipmentProp = TEqProp::getTEqPropByEqId($db,$equipment[MdEq::$id]);
+    APIMgmt::requireRecord($equipmentProp, 409);
     $prntLocation = MdLoc::getMdLoc($db, $equipmentProp[TEqProp::$locId]);
+    APIMgmt::requireRecord($prntLocation, 409);
 
-    if(!$equipment){   
-        APIMgmt::badParamsResponse();
-    }
     
     $eqData = array();
     

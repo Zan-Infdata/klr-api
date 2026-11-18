@@ -1,4 +1,3 @@
-
 <?php
 
 
@@ -25,6 +24,7 @@
 	// READ REQUEST URI call
     ReqURI::readURI($_SERVER['REQUEST_URI']) ;
 	header('Content-Type: application/json');
+    \apilib\RateLimiter::enforceRequest();
 
 	if(ReqURI::isCallPing()){
 		include_once(ReqURI::getPingFileName());
