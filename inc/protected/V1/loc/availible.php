@@ -22,7 +22,8 @@
     $fltr = APIMgmt::optionalString($params, APIMgmt::FILTER_KY);
     $sort_key = APIMgmt::sortKey($params);
 
-    $db_res = ReadData::getAvailibleLocationList($db, $sort_key, $fltr, $offset, $rowno);
+    $includeService = ($params['include_service'] ?? null) === '1';
+    $db_res = ReadData::getAvailibleLocationList($db, $sort_key, $fltr, $offset, $rowno, $includeService);
 
     if (is_null($db_res)) {
         APIMgmt::serverErrorResponse();
@@ -38,6 +39,11 @@
             APIMgmt::DESC => $row[MdLoc::$desc],
             APIMgmt::ISACTIVE => $row[MdLoc::$isActive]
         );
+        if ($includeService) {
+            $last = array_key_last($locations);
+            $locations[$last][APIMgmt::TYPE_ID] = (int) $row[MdLoc::$typeId];
+            $locations[$last]['pickupOnly'] = (bool) $row['pickupOnly'];
+        }
     }
 
     $data = array();

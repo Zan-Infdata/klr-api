@@ -28,7 +28,7 @@ use apidb\MdLocType;
     if (!isset($data[APIMgmt::ISACTIVE]) || !in_array($data[APIMgmt::ISACTIVE], array(0, 1, '0', '1'), true)
         || !APIMgmt::positiveId($toLocation_id)) { APIMgmt::badParamsResponse(); }
     $toLocation = MdLoc::getMdLoc($db, $toLocation_id);
-    if (!$toLocation) { APIMgmt::badParamsResponse(); }
+    if (!$toLocation || (int) $toLocation[MdLoc::$typeId] === MdLocType::SERVICE) { APIMgmt::badParamsResponse(); }
 
     $success = Transaction::createLocation($db, $data, $toLocation_id, MdLocType::TRANSPORT, MdLocStat::T_PARKED, $user[SyUser::$id]);
     $data = array();

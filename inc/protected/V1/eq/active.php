@@ -3,7 +3,6 @@
     use apilib\APIMgmt;
     use apidb\Db;
     use apidb\MdEq;
-    use apidb\MdEqType;
 
     APIMgmt::checkMethod(["GET"]);
     $db = Db::connectDB();

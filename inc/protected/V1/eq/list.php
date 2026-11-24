@@ -3,7 +3,6 @@
     use apilib\APIMgmt;
     use apidb\Db;
     use apidb\MdEq;
-    use apidb\MdEqType;
     use apidb\MdLoc;
 use apidb\MdLocType;
 use apidb\ReadData;

@@ -36,7 +36,8 @@
             APIMgmt::CODE => $row[MdEq::$code],
             APIMgmt::UUID => $row[MdEq::$uuid],
             APIMgmt::ISACTIVE => $row[MdEq::$isActive],
-            APIMgmt::TYPE_ID => $row[MdEq::$typeId],
+            APIMgmt::TYPE_ID => $row[MdEq::$primaryTypeId],
+            APIMgmt::SECONDARY_TYPE_ID => (int) $row[MdEq::$secondaryTypeId],
             APIMgmt::SERVICE_STATUS_ID => (int) $row[TEqProp::$serviceStatId]
         );
     }

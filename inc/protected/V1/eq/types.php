@@ -2,12 +2,12 @@
 
     use apilib\APIMgmt;
     use apidb\Db;
-    use apidb\MdEqType;
+    use apidb\MdEqTypePrimary;
 
     APIMgmt::checkMethod(["GET"]);
     $db = Db::connectDB();
 
-    $db_res = MdEqType::getAll($db);
+    $db_res = MdEqTypePrimary::getAll($db);
 
     if (is_null($db_res)) {
         APIMgmt::serverErrorResponse();
@@ -16,9 +16,9 @@
     $types = array();
     foreach ($db_res as $row) {
         $types[] = array(
-            APIMgmt::ID => $row[MdEqType::$id],
-            APIMgmt::NAME => $row[MdEqType::$name],
-            APIMgmt::CODE => $row[MdEqType::$code]
+            APIMgmt::ID => $row[MdEqTypePrimary::$id],
+            APIMgmt::NAME => $row[MdEqTypePrimary::$name],
+            APIMgmt::CODE => $row[MdEqTypePrimary::$code]
         );
     }
 

@@ -31,6 +31,7 @@
             APIMgmt::PRNT_ID => $row[APIMgmt::PRNT_ID],
             APIMgmt::PRNT_NAME => $row[APIMgmt::PRNT_NAME],
             APIMgmt::PRNT_UUID => $row[APIMgmt::PRNT_UUID],
+            'parentTypeId' => (int) $row['parentTypeId'],
         );
     }
 

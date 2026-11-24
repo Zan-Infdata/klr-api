@@ -457,6 +457,102 @@ use apidb\SyUserAcl;
 
 
 
+    class ServiceActions {
+        public static function requireRole($actor, $role) {
+            if (!in_array((int) ($actor[SyUser::$aclId] ?? 0),
+                array(SyUserAcl::ADMIN, SyUserAcl::OWNER, SyUserAcl::MANAGER, SyUserAcl::OPERATOR), true)
+                || !SyUserAcl::hasPrivilege($actor, $role)) {
+                APIMgmt::sendResponse(1, 'Forbidden', 403);
+            }
+        }
+
+        public static function effectiveUser($db, $actor, $params) {
+            self::requireRole($actor, SyUserAcl::OPERATOR);
+            $selected = AclManager::managerSyUserChange($actor, $params);
+            if ($selected && !SyUser::getActiveSyUser($db, $selected)) {
+                APIMgmt::sendResponse(1, 'Selected user is unavailable', 409);
+            }
+            return (int) ($selected ?: $actor[SyUser::$id]);
+        }
+
+        public static function read($query) {
+            try {
+                return $query();
+            } catch (\Throwable $error) {
+                APIMgmt::serverErrorResponse();
+            }
+        }
+
+        public static function sendData($data) {
+            echo json_encode(array(APIMgmt::ERR_KY => 0, APIMgmt::DATA_KY => $data), JSON_INVALID_UTF8_SUBSTITUTE);
+        }
+
+        public static function saveLocation($actor, $create) {
+            APIMgmt::checkMethod(array('POST'));
+            self::requireRole($actor, SyUserAcl::MANAGER);
+            $body = ReqURI::getJsonBody();
+            $record = $body[APIMgmt::ELEM_KY] ?? null;
+            $typeIds = $body['secondary_type_ids'] ?? null;
+            APIMgmt::checkStringParams($record, array(APIMgmt::UUID, APIMgmt::CODE, APIMgmt::NAME));
+            $description = $record[APIMgmt::DESC] ?? null;
+            if (!\apidb\UpdateData::isUpdateUUID($record[APIMgmt::UUID])
+                || !preg_match('/^.{1,45}$/usD', $record[APIMgmt::CODE])
+                || !preg_match('/^.{1,45}$/usD', $record[APIMgmt::NAME])
+                || !is_string($description) || !preg_match('/^.{0,250}$/usD', $description)
+                || !in_array($record[APIMgmt::ISACTIVE] ?? null, array(0, 1), true)
+                || !in_array($record[APIMgmt::SERVICE_LOCATION_STATUS] ?? null,
+                    array(\apidb\MdLocStat::SERVICE_OPEN, \apidb\MdLocStat::SERVICE_CLOSED), true)
+                || !is_array($typeIds) || !ReqURI::isJsonList('secondary_type_ids')) { APIMgmt::badParamsResponse(); }
+            $db = Db::connectDB();
+            if (!$db) { APIMgmt::serverErrorResponse(); }
+            $valid = array_column(self::read(fn() => \apidb\ReadData::getServiceTypeOptions($db, 0)), 'id');
+            $seen = array();
+            foreach ($typeIds as $id) {
+                if (!is_int($id) || !in_array($id, $valid, true) || isset($seen[$id])) { APIMgmt::badParamsResponse(); }
+                $seen[$id] = true;
+            }
+            $status = \apidb\Transaction::saveServiceLocation($db, $record, $typeIds, (int) $actor[SyUser::$id], $create);
+            if ($status === 404) { APIMgmt::sendResponse(1, 'Service location not found', 404); }
+            if ($status === 409) { APIMgmt::sendResponse(1, 'Service location conflict', 409); }
+            if ($status !== 200) { APIMgmt::serverErrorResponse(); }
+            echo json_encode(array(APIMgmt::ERR_KY => 0));
+        }
+
+        public static function transfer($actor, $pickup) {
+            APIMgmt::checkMethod(array('POST'));
+            $body = ReqURI::getJsonBody();
+            APIMgmt::checkStringParams($body, array(APIMgmt::PRNT_FROM_KY, APIMgmt::PRNT_TO_KY));
+            $key = $pickup ? 'items' : APIMgmt::ELEM_LIST_KY;
+            $entries = $body[$key] ?? null;
+            if (!is_array($entries) || !$entries || !ReqURI::isJsonList($key)
+                || $body[APIMgmt::PRNT_FROM_KY] === $body[APIMgmt::PRNT_TO_KY]) { APIMgmt::badParamsResponse(); }
+            $db = Db::connectDB();
+            if (!$db) { APIMgmt::serverErrorResponse(); }
+            $userId = self::effectiveUser($db, $actor, $body);
+            try {
+                \apidb\Transaction::verifyServiceTransferEngines($db, $pickup);
+            } catch (\Throwable $error) {
+                APIMgmt::serverErrorResponse();
+            }
+            $results = array();
+            foreach ($entries as $entry) {
+                $item = $pickup ? $entry : array(APIMgmt::UUID => $entry);
+                if (!is_array($item) || !APIMgmt::nonEmptyString($item[APIMgmt::UUID] ?? null)
+                    || ($pickup && (!array_key_exists(APIMgmt::WARRANTY_DATE, $item)
+                        || !APIMgmt::validWarrantyDate($item[APIMgmt::WARRANTY_DATE])
+                        || !in_array($item[APIMgmt::IS_BROKEN] ?? null, array(0, 1), true)))) {
+                    $results[] = 0;
+                    continue;
+                }
+                $status = \apidb\Transaction::transferServiceEquipment($db, $userId,
+                    $body[APIMgmt::PRNT_FROM_KY], $body[APIMgmt::PRNT_TO_KY], $item, $pickup);
+                if ($status !== 200 && $status !== 409) { APIMgmt::serverErrorResponse(); }
+                $results[] = $status === 200 ? 1 : 0;
+            }
+            self::sendData($results);
+        }
+    }
+
     class APIMgmt {
 
 		// in keys
@@ -485,6 +581,8 @@ use apidb\SyUserAcl;
 		const ELEM_LIST_KY = 'element_list';
 		const ID_KY = 'id';
 		const TYPE_KY = 'type';
+		const TYPE_SECONDARY_KY = 'type_secondary';
+		const PRIMARY_TYPE_KY = 'primary_type';
 		const DATE_FROM_KY = 'date_from';
 		const DATE_TO_KY = 'date_to';
 		
@@ -510,7 +608,9 @@ use apidb\SyUserAcl;
 		const ISACTIVE = 'isActive';
 		const TIME = 'time';
 		const ISLAST = 'isLast';
+		const IS_TELEPORT = 'isTeleport';
 		const TYPE_ID = 'typeId';
+		const SECONDARY_TYPE_ID = 'secondaryTypeId';
 		const STATUS_ID = 'statusId';
 		const SERVICE_STATUS_ID = 'serviceStatusId';
 		const PRNT = 'parent';
@@ -571,6 +671,29 @@ use apidb\SyUserAcl;
 			return $method;
 		}
 		
+        const SERVICE_LOCATION_STATUS = 'statusId';
+        const WARRANTY_DATE = 'warranty_date';
+        const IS_BROKEN = 'is_broken';
+
+        public static function validWarrantyDate($value) {
+            if ($value === null) { return true; }
+            return is_string($value) && preg_match('/^([1-9][0-9]{3})-([0-9]{2})-([0-9]{2})$/D', $value, $parts)
+                && checkdate((int) $parts[2], (int) $parts[3], (int) $parts[1]);
+        }
+
+        const CHECKLIST_ID = 'checklist_id';
+        const WAREHOUSE_ID = 'warehouse_id';
+        const ASSIGNEE_ID = 'assignee_id';
+        const CHECKLIST_LINES = 'lines';
+
+        public static function sendChecklistResult($result) {
+            $status = $result['status'];
+            if ($status === 404) { self::sendResponse(1, 'Record not found', 404); }
+            if ($status !== 200 && $status !== 409) { self::serverErrorResponse(); }
+            http_response_code($status);
+            echo json_encode(array(self::ERR_KY => $status === 200 ? 0 : 1, self::DATA_KY => $result['data']));
+        }
+
         public static function getPagination($params) {
             if (!is_array($params)) { self::badParamsResponse(); }
             $values = array();

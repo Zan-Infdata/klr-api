@@ -31,7 +31,10 @@
     $eqData[APIMgmt::UUID] = $equipment[MdEq::$uuid];
     $eqData[APIMgmt::NAME] = $equipment[MdEq::$name];
     $eqData[APIMgmt::CODE] = $equipment[MdEq::$code];
-    $eqData[APIMgmt::TYPE_ID] = $equipment[MdEq::$typeId];
+    $eqData[APIMgmt::TYPE_ID] = $equipment[MdEq::$primaryTypeId];
+    $eqData[APIMgmt::SECONDARY_TYPE_ID] = (int) $equipment[MdEq::$secondaryTypeId];
+    $eqData[APIMgmt::SERVICE_STATUS_ID] = (int) ($equipmentProp[TEqProp::$serviceStatId] ?? 1);
+    $eqData['originalWarrantyDate'] = $equipment[MdEq::$warrantyDate] ?? null;
     $eqData[APIMgmt::ISACTIVE] = $equipment[MdEq::$isActive];
     $eqData[APIMgmt::PRNT_ID] = $prntLocation[MdLoc::$id];
     $eqData[APIMgmt::PRNT_NAME] = $prntLocation[MdLoc::$name];
